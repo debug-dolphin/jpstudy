@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>일본어 학습기 (Firebase 동기화)</title>
+<style>
+body { font-family: sans-serif; text-align:center; margin-top:40px; }
+button { padding:10px 14px; margin:4px; }
+#answer { display:none; font-size:24px; margin:20px; }
+#question { font-size:28px; margin:20px; }
+#status { margin-top:20px; }
+</style>
+</head>
+<body>
+
+<h2 id="modeLabel">기본학습</h2>
+<h2 id="question">로딩 중...</h2>
+<div id="answer"></div>
+
+<button onclick="showAnswer()">답 보기</button>
+<button onclick="markCorrect()">맞음</button>
+<button onclick="markWrong()">틀림</button>
+
+<br><br>
+
+<button onclick="setMode('normal')">기본학습</button>
+<button onclick="setMode('graduated')">졸업학습</button>
+<button onclick="setMode('wrong')">오답학습</button>
+
+<br><br>
+
+<button onclick="setBatch(1)">1문제</button>
+<button onclick="setBatch(5)">5문제</button>
+<button onclick="setBatch(10)">10문제</button>
+
+<br><br>
+
+<button onclick="importExcel()">엑셀 붙여넣기(최초 문장 등록)</button>
+
+<div id="status"></div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<script>
+
+// Import the functions you need from the SDKs you need
+
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBM50z8TDCv9uHXqx4xd-lC8wAQph9qqpE",
+  authDomain: "jp-writing-73c3d.firebaseapp.com",
+  projectId: "jp-writing-73c3d",
+  storageBucket: "jp-writing-73c3d.firebasestorage.app",
+  messagingSenderId: "285988750638",
+  appId: "1:285988750638:web:87a6b3dc6279919a82e6bf"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+
+// =========================
+// 앱 상태
+// =========================
+let sentences = [];
+let wrongList = [];
+
+let mode = 'normal';
+let batchSize = 1;
+let batch = [];
+let index = 0;
+let results = [];
+let current = null;
+
+// =========================
+// Firebase 로드
+// =========================
+async function loadData(){
+
+  // 문장
+  let snap = await db.collection('sentences').get();
+
+  sentences = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  // 오답
+  let wsnap = await db.collection('wrongList').get();
+
+  wrongList = wsnap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  if(sentences.length===0){
+    document.getElementById('question').innerText=
+      '문장이 없습니다. 엑셀 붙여넣기로 먼저 넣으세요.';
+    return;
+  }
+
+  startBatch();
+}
+
+// =========================
+// 엑셀 붙여넣기
+// 한국어열 + 일본어열 두칸 복사
+// =========================
+async function importExcel(){
+
+ let text = prompt('엑셀 2열 복사한 내용 붙여넣기');
+ if(!text) return;
+
+ let lines = text.split('\n').filter(v=>v.trim());
+
+ for(let line of lines){
+   let parts=line.split('\t');
+   if(parts.length<2) continue;
+
+   await db.collection('sentences').add({
+      korean: parts[0].trim(),
+      japanese: parts[1].trim(),
+      group:1
+   });
+ }
+
+ alert('등록 완료');
+ loadData();
+}
+
+// =========================
+// 모드
+// =========================
+function setMode(m){
+ mode=m;
+
+ document.getElementById('modeLabel').innerText=
+   m==='normal' ? '기본학습' :
+   m==='graduated' ? '졸업학습' :
+   '오답학습';
+
+ startBatch();
+}
+
+function setBatch(n){
+ batchSize=n;
+ startBatch();
+}
+
+// =========================
+// 문제 출제
+// =========================
+function startBatch(){
+
+ let pool=[];
+
+ if(mode==='normal'){
+   pool=sentences.filter(x=>x.group<=5);
+ }
+ else if(mode==='graduated'){
+   pool=sentences.filter(x=>x.group===6);
+ }
+ else {
+   pool=wrongList;
+ }
+
+ if(pool.length===0){
+   document.getElementById('question').innerText='문제 없음';
+   return;
+ }
+
+ batch=shuffle(pool).slice(0,batchSize);
+ index=0;
+ results=[];
+
+ loadQuestion();
+}
+
+function loadQuestion(){
+
+ if(index>=batch.length){
+   finishBatch();
+   return;
+ }
+
+ current=batch[index];
+
+ document.getElementById('question').innerText=current.korean;
+ document.getElementById('answer').innerText=current.japanese;
+ document.getElementById('answer').style.display='none';
+
+ document.getElementById('status').innerText=
+  `${index+1}/${batch.length} | 현재 그룹 ${current.group}`;
+}
+
+function showAnswer(){
+ document.getElementById('answer').style.display='block';
+}
+
+function markCorrect(){
+ results.push(true);
+ nextQuestion();
+}
+
+function markWrong(){
+ results.push(false);
+ nextQuestion();
+}
+
+function nextQuestion(){
+ index++;
+ loadQuestion();
+}
+
+// =========================
+// 저장
+// =========================
+async function saveSentence(item){
+ await db.collection('sentences').doc(item.id).update({
+   group:item.group
+ });
+}
+
+async function addWrong(item){
+ let exists = wrongList.find(x=>x.id===item.id);
+ if(exists) return;
+
+ await db.collection('wrongList').doc(item.id).set({
+   korean:item.korean,
+   japanese:item.japanese,
+   group:item.group
+ });
+}
+
+async function removeWrong(item){
+ await db.collection('wrongList').doc(item.id).delete()
+   .catch(()=>{});
+}
+
+async function finishBatch(){
+
+ for(let i=0;i<batch.length;i++){
+
+   let item=batch[i];
+
+   if(results[i]){
+
+      if(mode==='normal'){
+        item.group=Math.min(item.group+1,6);
+        await saveSentence(item);
+      }
+
+      await removeWrong(item);
+
+   } else {
+
+      item.group=1;
+      await saveSentence(item);
+      await addWrong(item);
+   }
+ }
+
+ await loadData();
+}
+
+function shuffle(arr){
+ return [...arr].sort(()=>Math.random()-0.5)
+}
+
+// 시작
+loadData();
+
+</script>
+</body>
+</html>
