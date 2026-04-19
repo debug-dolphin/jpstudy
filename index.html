@@ -3,56 +3,70 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>일본어 학습기 Firebase 버전</title>
+<title>일본어 학습기</title>
 
 <style>
-body { font-family:sans-serif; text-align:center; margin-top:40px; }
-button { margin:5px; padding:10px; }
-#answer { display:none; font-size:24px; margin-top:20px; }
-#question { font-size:28px; margin-top:20px; }
-.box { border:1px solid #ddd; margin:10px; padding:10px; }
+body {
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  text-align:center;
+  margin-top:30px;
+  font-size:22px;
+}
+
+button {
+  margin:5px;
+  padding:12px;
+  font-size:18px;
+}
+
+.box {
+  border:1px solid #ddd;
+  margin:10px;
+  padding:15px;
+  font-size:22px;
+}
+
+h2 { font-size:28px; }
+.small { font-size:18px; color:#666; }
 </style>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
 </head>
 
 <body>
 
 <h2 id="modeLabel">기본학습</h2>
-<h2 id="question">로딩중...</h2>
-<div id="answer"></div>
 
-<button onclick="showAnswer()">답 보기</button>
+<!-- 🔥 통계 영역 -->
+<div id="stats" class="small">로딩중...</div>
+
+<div id="app">로딩중...</div>
+
+<br>
+
+<button onclick="setMode('normal')">기본</button>
+<button onclick="setMode('graduated')">졸업</button>
+<button onclick="setMode('wrong')">오답</button>
 
 <br><br>
 
-<button onclick="setMode('normal')">기본학습</button>
-<button onclick="setMode('graduated')">졸업학습</button>
-<button onclick="setMode('wrong')">오답학습</button>
-
-<br><br>
-
-<button onclick="setBatch(1)">1문제</button>
+<button onclick="setBatch(1)">1문장</button>
 <button onclick="setBatch(5)">5문제</button>
 <button onclick="setBatch(10)">10문제</button>
 
 <br><br>
 
-<button onclick="markCorrect()">맞음</button>
-<button onclick="markWrong()">틀림</button>
-
-<br><br>
-
-<button onclick="finishBatch()">세트 종료 + 리뷰</button>
-
-<div id="status"></div>
-
-<!-- Firebase (script 방식) -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<h3>문장 추가</h3>
+<textarea id="inputBox" placeholder="한국어 TAB 일본어"></textarea><br>
+<button onclick="addSentences()">저장</button>
 
 <script>
 
 // =====================
-// Firebase 설정
+// Firebase
 // =====================
 const firebaseConfig = {
   apiKey: "AIzaSyBM50z8TDCv9uHXqx4xd-lC8wAQph9qqpE",
@@ -71,31 +85,77 @@ const db = firebase.firestore();
 // =====================
 let sentences = [];
 let wrongList = [];
-
 let batch = [];
 let results = [];
-let index = 0;
-
-let mode = "normal";
 let batchSize = 5;
-let current = null;
+let mode = "normal";
 
 // =====================
 // 데이터 로드
 // =====================
 async function loadData(){
 
-  let snap = await db.collection("sentences").get();
+  const snap = await db.collection("sentences").get();
   sentences = snap.docs.map(d => ({ id:d.id, ...d.data() }));
 
-  let wsnap = await db.collection("wrongList").get();
+  const wsnap = await db.collection("wrongList").get();
   wrongList = wsnap.docs.map(d => ({ id:d.id, ...d.data() }));
 
+  updateStats();
   startBatch();
 }
 
 // =====================
-// 배치 생성
+// 🔥 통계 표시 (핵심 추가)
+// =====================
+function updateStats(){
+
+  let g1 = sentences.filter(x=>x.group===1).length;
+  let g2 = sentences.filter(x=>x.group===2).length;
+  let g3 = sentences.filter(x=>x.group===3).length;
+  let g4 = sentences.filter(x=>x.group===4).length;
+  let g5 = sentences.filter(x=>x.group===5).length;
+  let g6 = sentences.filter(x=>x.group===6).length;
+
+  document.getElementById("stats").innerHTML = `
+    전체: ${sentences.length}개 |
+    1그룹: ${g1} |
+    2그룹: ${g2} |
+    3그룹: ${g3} |
+    4그룹: ${g4} |
+    5그룹: ${g5} |
+    6그룹: ${g6}
+  `;
+}
+
+// =====================
+// 문장 추가
+// =====================
+async function addSentences(){
+
+  let text = document.getElementById("inputBox").value;
+  if(!text) return;
+
+  let lines = text.split("\n");
+
+  for(let line of lines){
+
+    let parts = line.split("\t");
+    if(parts.length < 2) continue;
+
+    await db.collection("sentences").add({
+      korean: parts[0],
+      japanese: parts[1],
+      group: 1
+    });
+  }
+
+  document.getElementById("inputBox").value = "";
+  loadData();
+}
+
+// =====================
+// 세트 생성
 // =====================
 function startBatch(){
 
@@ -110,64 +170,66 @@ function startBatch(){
   }
 
   batch = shuffle(pool).slice(0,batchSize);
+  results = new Array(batch.length).fill(null);
 
-  index = 0;
-  results = [];
-
-  loadQuestion();
+  renderQuestions();
 }
 
 // =====================
-// 문제 출력
+// 문제
 // =====================
-function loadQuestion(){
+function renderQuestions(){
 
-  if(index >= batch.length){
-    document.getElementById("question").innerText = "세트 완료";
-    return;
-  }
+  let html = "<h2>문제</h2>";
 
-  current = batch[index];
+  batch.forEach((item,i)=>{
+    html += `<div class="box">Q${i+1}. ${item.korean}</div>`;
+  });
 
-  document.getElementById("question").innerText = current.korean;
-  document.getElementById("answer").innerText = current.japanese;
-  document.getElementById("answer").style.display = "none";
+  html += `<button onclick="renderAnswers()">답 보기</button>`;
 
-  document.getElementById("status").innerText =
-    `${index+1} / ${batch.length}`;
+  document.getElementById("app").innerHTML = html;
 }
 
 // =====================
-// 답 보기
+// 답 + 채점
 // =====================
-function showAnswer(){
-  document.getElementById("answer").style.display = "block";
+function renderAnswers(){
+
+  let html = "<h2>답</h2>";
+
+  batch.forEach((item,i)=>{
+    html += `
+      <div class="box">
+        Q${i+1}: ${item.korean}<br>
+        A: ${item.japanese}<br><br>
+
+        <button onclick="mark(${i},true)">⭕</button>
+        <button onclick="mark(${i},false)">❌</button>
+
+        <span id="m${i}"></span>
+      </div>
+    `;
+  });
+
+  html += `<button onclick="finishBatch()">세트 종료</button>`;
+
+  document.getElementById("app").innerHTML = html;
 }
 
 // =====================
-// 기록만 (즉시 채점 X)
+// 체크
 // =====================
-function markCorrect(){
-  results[index] = true;
-  next();
-}
-
-function markWrong(){
-  results[index] = false;
-  next();
-}
-
-function next(){
-  index++;
-  loadQuestion();
+function mark(i,val){
+  results[i] = val;
+  document.getElementById("m"+i).innerText = val ? "⭕" : "❌";
 }
 
 // =====================
-// 세트 종료 → 리뷰
+// 세트 종료
 // =====================
 async function finishBatch(){
 
-  // 그룹 업데이트 + 오답 저장
   for(let i=0;i<batch.length;i++){
 
     let item = batch[i];
@@ -179,11 +241,6 @@ async function finishBatch(){
       await db.collection("sentences")
         .doc(item.id)
         .update({ group:item.group });
-
-      await db.collection("wrongList")
-        .doc(item.id)
-        .delete()
-        .catch(()=>{});
 
     } else {
 
@@ -199,42 +256,35 @@ async function finishBatch(){
     }
   }
 
+  await loadData();
   renderReview();
 }
 
 // =====================
-// 리뷰 화면
+// 리뷰
 // =====================
 function renderReview(){
 
-  let html = "<h2>리뷰</h2>";
+  let html = "<h2>결과</h2>";
 
   batch.forEach((item,i)=>{
-
     html += `
       <div class="box">
-        <div>Q: ${item.korean}</div>
-        <div>A: ${item.japanese}</div>
-        <div>${results[i] ? "⭕ 정답" : "❌ 오답"}</div>
+        ${item.korean}<br>
+        → ${item.japanese}<br>
+        ${results[i] ? "⭕" : "❌"}
       </div>
     `;
   });
 
-  document.body.innerHTML = html;
+  document.getElementById("app").innerHTML = html;
 }
 
 // =====================
 // 설정
 // =====================
 function setMode(m){
-
   mode = m;
-
-  document.getElementById("modeLabel").innerText =
-    m==="normal" ? "기본학습" :
-    m==="graduated" ? "졸업학습" :
-    "오답학습";
-
   startBatch();
 }
 
@@ -244,7 +294,7 @@ function setBatch(n){
 }
 
 // =====================
-// shuffle
+// util
 // =====================
 function shuffle(arr){
   return [...arr].sort(()=>Math.random()-0.5);
