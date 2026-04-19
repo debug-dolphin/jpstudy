@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>일본어 학습기</title>
+<title>일본어 그룹 학습기</title>
 
 <style>
 body {
@@ -23,11 +23,14 @@ button {
   border:1px solid #ddd;
   margin:10px;
   padding:15px;
-  font-size:22px;
 }
 
 h2 { font-size:28px; }
-.small { font-size:18px; color:#666; }
+
+.small {
+  font-size:18px;
+  color:#666;
+}
 </style>
 
 <!-- Firebase -->
@@ -38,27 +41,33 @@ h2 { font-size:28px; }
 
 <body>
 
-<h2 id="modeLabel">기본학습</h2>
+<h2 id="modeLabel">그룹 학습</h2>
 
-<!-- 🔥 통계 영역 -->
 <div id="stats" class="small">로딩중...</div>
 
 <div id="app">로딩중...</div>
 
 <br>
 
-<button onclick="setMode('normal')">기본</button>
-<button onclick="setMode('graduated')">졸업</button>
-<button onclick="setMode('wrong')">오답</button>
+<!-- 🔥 그룹 선택 -->
+<h3>그룹 선택</h3>
+<button onclick="setGroup(1)">1그룹</button>
+<button onclick="setGroup(2)">2그룹</button>
+<button onclick="setGroup(3)">3그룹</button>
+<button onclick="setGroup(4)">4그룹</button>
+<button onclick="setGroup(5)">5그룹</button>
+<button onclick="setGroup(6)">6그룹</button>
 
 <br><br>
 
+<!-- 🔥 문제 수 -->
 <button onclick="setBatch(1)">1문장</button>
 <button onclick="setBatch(5)">5문제</button>
 <button onclick="setBatch(10)">10문제</button>
 
 <br><br>
 
+<!-- 🔥 문장 추가 -->
 <h3>문장 추가</h3>
 <textarea id="inputBox" placeholder="한국어 TAB 일본어"></textarea><br>
 <button onclick="addSentences()">저장</button>
@@ -85,10 +94,12 @@ const db = firebase.firestore();
 // =====================
 let sentences = [];
 let wrongList = [];
+
 let batch = [];
 let results = [];
+
 let batchSize = 5;
-let mode = "normal";
+let selectedGroup = 1;
 
 // =====================
 // 데이터 로드
@@ -106,26 +117,29 @@ async function loadData(){
 }
 
 // =====================
-// 🔥 통계 표시 (핵심 추가)
+// 🔥 통계
 // =====================
 function updateStats(){
 
-  let g1 = sentences.filter(x=>x.group===1).length;
-  let g2 = sentences.filter(x=>x.group===2).length;
-  let g3 = sentences.filter(x=>x.group===3).length;
-  let g4 = sentences.filter(x=>x.group===4).length;
-  let g5 = sentences.filter(x=>x.group===5).length;
-  let g6 = sentences.filter(x=>x.group===6).length;
-
-  document.getElementById("stats").innerHTML = `
+  let html = `
     전체: ${sentences.length}개 |
-    1그룹: ${g1} |
-    2그룹: ${g2} |
-    3그룹: ${g3} |
-    4그룹: ${g4} |
-    5그룹: ${g5} |
-    6그룹: ${g6}
+    1그룹: ${sentences.filter(x=>x.group===1).length} |
+    2그룹: ${sentences.filter(x=>x.group===2).length} |
+    3그룹: ${sentences.filter(x=>x.group===3).length} |
+    4그룹: ${sentences.filter(x=>x.group===4).length} |
+    5그룹: ${sentences.filter(x=>x.group===5).length} |
+    6그룹: ${sentences.filter(x=>x.group===6).length}
   `;
+
+  document.getElementById("stats").innerHTML = html;
+}
+
+// =====================
+// 그룹 선택
+// =====================
+function setGroup(g){
+  selectedGroup = g;
+  startBatch();
 }
 
 // =====================
@@ -155,19 +169,11 @@ async function addSentences(){
 }
 
 // =====================
-// 세트 생성
+// 세트 생성 (🔥 핵심 변경)
 // =====================
 function startBatch(){
 
-  let pool = [];
-
-  if(mode==="normal"){
-    pool = sentences.filter(x=>x.group<=5);
-  } else if(mode==="graduated"){
-    pool = sentences.filter(x=>x.group===6);
-  } else {
-    pool = wrongList;
-  }
+  let pool = sentences.filter(x => x.group === selectedGroup);
 
   batch = shuffle(pool).slice(0,batchSize);
   results = new Array(batch.length).fill(null);
@@ -180,7 +186,7 @@ function startBatch(){
 // =====================
 function renderQuestions(){
 
-  let html = "<h2>문제</h2>";
+  let html = `<h2>${selectedGroup}그룹 문제</h2>`;
 
   batch.forEach((item,i)=>{
     html += `<div class="box">Q${i+1}. ${item.korean}</div>`;
@@ -218,7 +224,7 @@ function renderAnswers(){
 }
 
 // =====================
-// 체크
+// 채점
 // =====================
 function mark(i,val){
   results[i] = val;
@@ -283,11 +289,6 @@ function renderReview(){
 // =====================
 // 설정
 // =====================
-function setMode(m){
-  mode = m;
-  startBatch();
-}
-
 function setBatch(n){
   batchSize = n;
   startBatch();
