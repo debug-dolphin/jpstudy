@@ -322,7 +322,7 @@ for(let i=0;i<batch.length;i++){
 let item=batch[i];
 
 
-await fetch(API,{
+await fetch(API + "?action=load",{
 method:"POST",
 
 body:JSON.stringify({
@@ -373,7 +373,7 @@ if(p.length<2) continue;
 
 
 
-await fetch(API,{
+await fetch(API + "?action=load",{
 
 method:"POST",
 
