@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>일본어 그룹 학습기</title>
+
+<style>
+body {
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  text-align:center;
+  margin-top:30px;
+  font-size:22px;
+}
+
+button {
+  margin:5px;
+  padding:12px;
+  font-size:18px;
+}
+
+.box {
+  border:1px solid #ddd;
+  margin:10px;
+  padding:15px;
+}
+
+h2 { font-size:28px; }
+
+.small {
+  font-size:18px;
+  color:#666;
+}
+</style>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+</head>
+
+<body>
+
+<h2 id="modeLabel">그룹 학습</h2>
+
+<div id="stats" class="small">로딩중...</div>
+
+<div id="app">로딩중...</div>
+
+<br>
+
+<!-- 🔥 그룹 선택 -->
+<h3>그룹 선택</h3>
+<button onclick="setGroup(1)">1그룹</button>
+<button onclick="setGroup(2)">2그룹</button>
+<button onclick="setGroup(3)">3그룹</button>
+<button onclick="setGroup(4)">4그룹</button>
+<button onclick="setGroup(5)">5그룹</button>
+<button onclick="setGroup(6)">6그룹</button>
+
+<br><br>
+
+<!-- 🔥 문제 수 -->
+<button onclick="setBatch(1)">1문장</button>
+<button onclick="setBatch(5)">5문제</button>
+<button onclick="setBatch(10)">10문제</button>
+
+<br><br>
+
+<!-- 🔥 문장 추가 -->
+<h3>문장 추가</h3>
+<textarea id="inputBox" placeholder="한국어 TAB 일본어"></textarea><br>
+<button onclick="addSentences()">저장</button>
+
+<script>
+
+// =====================
+// Firebase
+// =====================
+const firebaseConfig = {
+  apiKey: "AIzaSyBM50z8TDCv9uHXqx4xd-lC8wAQph9qqpE",
+  authDomain: "jp-writing-73c3d.firebaseapp.com",
+  projectId: "jp-writing-73c3d",
+  storageBucket: "jp-writing-73c3d.firebasestorage.app",
+  messagingSenderId: "285988750638",
+  appId: "1:285988750638:web:87a6b3dc6279919a82e6bf"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// =====================
+// 상태
+// =====================
+let sentences = [];
+let wrongList = [];
+
+let batch = [];
+let results = [];
+
+let batchSize = 5;
+let selectedGroup = 1;
+
+// =====================
+// 데이터 로드
+// =====================
+async function loadData(){
+
+  const snap = await db.collection("sentences").get();
+  sentences = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+
+  const wsnap = await db.collection("wrongList").get();
+  wrongList = wsnap.docs.map(d => ({ id:d.id, ...d.data() }));
+
+  updateStats();
+  startBatch();
+}
+
+// =====================
+// 🔥 통계
+// =====================
+function updateStats(){
+
+  let html = `
+    전체: ${sentences.length}개 |
+    1그룹: ${sentences.filter(x=>x.group===1).length} |
+    2그룹: ${sentences.filter(x=>x.group===2).length} |
+    3그룹: ${sentences.filter(x=>x.group===3).length} |
+    4그룹: ${sentences.filter(x=>x.group===4).length} |
+    5그룹: ${sentences.filter(x=>x.group===5).length} |
+    6그룹: ${sentences.filter(x=>x.group===6).length}
+  `;
+
+  document.getElementById("stats").innerHTML = html;
+}
+
+// =====================
+// 그룹 선택
+// =====================
+function setGroup(g){
+  selectedGroup = g;
+  startBatch();
+}
+
+// =====================
+// 문장 추가
+// =====================
+async function addSentences(){
+
+  let text = document.getElementById("inputBox").value;
+  if(!text) return;
+
+  let lines = text.split("\n");
+
+  for(let line of lines){
+
+    let parts = line.split("\t");
+    if(parts.length < 2) continue;
+
+    await db.collection("sentences").add({
+      korean: parts[0],
+      japanese: parts[1],
+      group: 1
+    });
+  }
+
+  document.getElementById("inputBox").value = "";
+  loadData();
+}
+
+// =====================
+// 세트 생성 (🔥 핵심 변경)
+// =====================
+function startBatch(){
+
+  let pool = sentences.filter(x => x.group === selectedGroup);
+
+  batch = shuffle(pool).slice(0,batchSize);
+  results = new Array(batch.length).fill(null);
+
+  renderQuestions();
+}
+
+// =====================
+// 문제
+// =====================
+function renderQuestions(){
+
+  let html = `<h2>${selectedGroup}그룹 문제</h2>`;
+
+  batch.forEach((item,i)=>{
+    html += `<div class="box">Q${i+1}. ${item.korean}</div>`;
+  });
+
+  html += `<button onclick="renderAnswers()">답 보기</button>`;
+
+  document.getElementById("app").innerHTML = html;
+}
+
+// =====================
+// 답 + 채점
+// =====================
+function renderAnswers(){
+
+  let html = "<h2>답</h2>";
+
+  batch.forEach((item,i)=>{
+    html += `
+      <div class="box">
+        Q${i+1}: ${item.korean}<br>
+        A: ${item.japanese}<br><br>
+
+        <button onclick="mark(${i},true)">⭕</button>
+        <button onclick="mark(${i},false)">❌</button>
+
+        <span id="m${i}"></span>
+      </div>
+    `;
+  });
+
+  html += `<button onclick="finishBatch()">세트 종료</button>`;
+
+  document.getElementById("app").innerHTML = html;
+}
+
+// =====================
+// 채점
+// =====================
+function mark(i,val){
+  results[i] = val;
+  document.getElementById("m"+i).innerText = val ? "⭕" : "❌";
+}
+
+// =====================
+// 세트 종료
+// =====================
+async function finishBatch(){
+
+  for(let i=0;i<batch.length;i++){
+
+    let item = batch[i];
+
+    if(results[i]){
+
+      item.group = Math.min(item.group+1,6);
+
+      await db.collection("sentences")
+        .doc(item.id)
+        .update({ group:item.group });
+
+    } else {
+
+      item.group = 1;
+
+      await db.collection("sentences")
+        .doc(item.id)
+        .update({ group:1 });
+
+      await db.collection("wrongList")
+        .doc(item.id)
+        .set(item);
+    }
+  }
+
+  await loadData();
+  renderReview();
+}
+
+// =====================
+// 리뷰
+// =====================
+function renderReview(){
+
+  let html = "<h2>결과</h2>";
+
+  batch.forEach((item,i)=>{
+    html += `
+      <div class="box">
+        ${item.korean}<br>
+        → ${item.japanese}<br>
+        ${results[i] ? "⭕" : "❌"}
+      </div>
+    `;
+  });
+
+  document.getElementById("app").innerHTML = html;
+}
+
+// =====================
+// 설정
+// =====================
+function setBatch(n){
+  batchSize = n;
+  startBatch();
+}
+
+// =====================
+// util
+// =====================
+function shuffle(arr){
+  return [...arr].sort(()=>Math.random()-0.5);
+}
+
+// 시작
+loadData();
+
+</script>
+
+</body>
+</html>
