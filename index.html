@@ -316,10 +316,7 @@ async function finishBatch(){
   console.log("finish 시작");
   console.log("batch", batch);
   console.log("results", results);
-console.log(
-"실제 URL",
-API_URL + `?action=update&id=${item.id}&group=${newGroup}`
-);
+
   for(let i=0;i<batch.length;i++){
 
     let item=batch[i];
@@ -332,24 +329,23 @@ API_URL + `?action=update&id=${item.id}&group=${newGroup}`
       newGroup = 1;
     }
 
-    console.log("업데이트 보냄", item.id, newGroup);
 
- let url =
-  API_URL +
-  `?action=update&id=${item.id}&group=${newGroup}`;
+    let url =
+      API_URL +
+      `?action=update&id=${item.id}&group=${newGroup}`;
 
-console.log("실제 요청 URL:", url);
+    console.log("실제 요청 URL:", url);
 
-let res = await fetch(url);
 
-    console.log("응답", await res.text());
+    let res = await fetch(url);
+
+    console.log("응답 원문:", await res.text());
 
   }
 
   await loadData();
 
 }
-
 
 // =====================
 // 추가
