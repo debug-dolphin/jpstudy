@@ -91,9 +91,7 @@ placeholder="한국어 TAB 일본어"></textarea>
 // GAS 주소
 // =====================
 
-const API =
-"https://script.google.com/macros/s/AKfycbwocOKmIMXR-57SYItybDZl0bY4V9LI1FZCxXNcX2Uqj5aggFFj2KQtU5KojvohixnGfg/exec";
-
+const API_URL = "https://script.google.com/macros/s/AKfycbwocOKmIMXR-57SYItybDZl0bY4V9LI1FZCxXNcX2Uqj5aggFFj2KQtU5KojvohixnGfg/exec";
 
 
 // =====================
@@ -118,7 +116,7 @@ let selectedGroup=1;
 
 async function loadData(){
 
-  const res = await fetch(API + "?action=load");
+  const res = await fetch(API_URL + "?action=load");
 
   const data = await res.json();
 
@@ -126,12 +124,11 @@ async function loadData(){
 
   sentences = data;
 
-  console.log("sentences 확인:", sentences.length);
+  console.log("문장 수:", sentences.length);
 
   updateStats();
 
   startBatch();
-
 }
 
 
