@@ -118,16 +118,20 @@ let selectedGroup=1;
 
 async function loadData(){
 
-  const res = await fetch(API_URL + "?action=load");
+  const res = await fetch(API + "?action=load");
+
   const data = await res.json();
 
-  console.log(data);
+  console.log("받은 데이터:", data);
 
   sentences = data;
-  wrongList = [];
+
+  console.log("sentences 확인:", sentences.length);
 
   updateStats();
+
   startBatch();
+
 }
 
 
