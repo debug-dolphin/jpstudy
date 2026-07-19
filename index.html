@@ -118,19 +118,16 @@ let selectedGroup=1;
 
 async function loadData(){
 
-let res = await fetch(API + "?action=load");
+  const res = await fetch(API_URL + "?action=load");
+  const data = await res.json();
 
-let data = await res.json();
+  console.log(data);
 
-console.log(data);
+  sentences = data;
+  wrongList = [];
 
-sentences = data.sentences;
-
-
-updateStats();
-
-startBatch();
-
+  updateStats();
+  startBatch();
 }
 
 
