@@ -330,11 +330,7 @@ async function finishBatch(){
     }
 
 
-    let url =
-      API_URL +
-      `?action=update&id=${item.id}&group=${newGroup}`;
 
-    console.log("실제 요청 URL:", url);
 
 
  let res = await fetch(API_URL,{
