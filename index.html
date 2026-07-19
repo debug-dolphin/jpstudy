@@ -337,8 +337,21 @@ async function finishBatch(){
     console.log("실제 요청 URL:", url);
 
 
-    let res = await fetch(url);
+ let res = await fetch(API_URL,{
 
+  method:"POST",
+
+  body:JSON.stringify({
+
+    action:"update",
+
+    id:item.id,
+
+    group:newGroup
+
+  })
+
+});
     console.log("응답 원문:", await res.text());
 
   }
