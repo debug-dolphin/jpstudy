@@ -78,16 +78,21 @@ h2 { font-size:28px; }
 // Firebase
 // =====================
 const firebaseConfig = {
-  apiKey: "AIzaSyBM50z8TDCv9uHXqx4xd-lC8wAQph9qqpE",
-  authDomain: "jp-writing-73c3d.firebaseapp.com",
+  apiKey: "...",
+  authDomain: "...",
   projectId: "jp-writing-73c3d",
-  storageBucket: "jp-writing-73c3d.firebasestorage.app",
-  messagingSenderId: "285988750638",
-  appId: "1:285988750638:web:87a6b3dc6279919a82e6bf"
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
 };
 
 firebase.initializeApp(firebaseConfig);
+
 const db = firebase.firestore();
+
+db.settings({
+  experimentalForceLongPolling: true
+});
 
 // =====================
 // 상태
