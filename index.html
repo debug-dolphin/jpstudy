@@ -334,10 +334,13 @@ API_URL + `?action=update&id=${item.id}&group=${newGroup}`
 
     console.log("업데이트 보냄", item.id, newGroup);
 
-    let res = await fetch(
-      API_URL +
-      `?action=update&id=${item.id}&group=${newGroup}`
-    );
+ let url =
+  API_URL +
+  `?action=update&id=${item.id}&group=${newGroup}`;
+
+console.log("실제 요청 URL:", url);
+
+let res = await fetch(url);
 
     console.log("응답", await res.text());
 
