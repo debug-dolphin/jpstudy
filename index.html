@@ -313,6 +313,10 @@ v?"⭕":"❌";
 
 async function finishBatch(){
 
+  console.log("finish 시작");
+  console.log("batch", batch);
+  console.log("results", results);
+
   for(let i=0;i<batch.length;i++){
 
     let item=batch[i];
@@ -325,10 +329,14 @@ async function finishBatch(){
       newGroup = 1;
     }
 
-    await fetch(
+    console.log("업데이트 보냄", item.id, newGroup);
+
+    let res = await fetch(
       API_URL +
       `?action=update&id=${item.id}&group=${newGroup}`
     );
+
+    console.log("응답", await res.text());
 
   }
 
