@@ -78,12 +78,12 @@ h2 { font-size:28px; }
 // Firebase
 // =====================
 const firebaseConfig = {
-  apiKey: "...",
-  authDomain: "...",
+  apiKey: "AIzaSyBM50z8TDCv9uHXqx4xd-lC8wAQph9qqpE",
+  authDomain: "jp-writing-73c3d.firebaseapp.com",
   projectId: "jp-writing-73c3d",
-  storageBucket: "...",
-  messagingSenderId: "...",
-  appId: "..."
+  storageBucket: "jp-writing-73c3d.firebasestorage.app",
+  messagingSenderId: "285988750638",
+  appId: "1:285988750638:web:87a6b3dc6279919a82e6bf"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -91,14 +91,14 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 db.settings({
-  experimentalForceLongPolling: true
+  experimentalForceLongPolling: true,
+  useFetchStreams: false
 });
 
 // =====================
 // 상태
 // =====================
 let sentences = [];
-let wrongList = [];
 
 let batch = [];
 let results = [];
@@ -112,10 +112,11 @@ let selectedGroup = 1;
 async function loadData(){
 
   const snap = await db.collection("sentences").get();
-  sentences = snap.docs.map(d => ({ id:d.id, ...d.data() }));
 
-  const wsnap = await db.collection("wrongList").get();
-  wrongList = wsnap.docs.map(d => ({ id:d.id, ...d.data() }));
+  sentences = snap.docs.map(d => ({
+    id:d.id,
+    ...d.data()
+  }));
 
   updateStats();
   startBatch();
@@ -169,8 +170,9 @@ async function addSentences(){
     });
   }
 
-  document.getElementById("inputBox").value = "";
-  loadData();
+ document.getElementById("inputBox").value = "";
+
+ await loadData();
 }
 
 // =====================
@@ -267,8 +269,8 @@ async function finishBatch(){
     }
   }
 
-  await loadData();
-  renderReview();
+ updateStats();
+renderReview();
 }
 
 // =====================
