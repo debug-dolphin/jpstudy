@@ -338,7 +338,7 @@ async function finishBatch(){
 
     console.log("응답", await res.text());
 
-  
+  }
 
   await loadData();
 
@@ -351,46 +351,36 @@ async function finishBatch(){
 
 async function addSentences(){
 
-let text=
+let text =
 document.getElementById("inputBox").value;
 
-
-let lines=text.split("\n");
-
+let lines = text.split("\n");
 
 for(let line of lines){
 
+  let p=line.split("\t");
 
-let p=line.split("\t");
+  if(p.length<2) continue;
 
+  await fetch(API_URL + "?action=load",{
 
-if(p.length<2) continue;
+    method:"POST",
 
+    body:JSON.stringify({
 
+      action:"add",
 
-await fetch(API_URL + "?action=load",{
+      korean:p[0],
 
-method:"POST",
+      japanese:p[1]
 
-body:JSON.stringify({
+    })
 
-action:"add",
-
-korean:p[0],
-
-japanese:p[1]
-
-})
-
-});
-
+  });
 
 }
 
-
-
 document.getElementById("inputBox").value="";
-
 
 loadData();
 
