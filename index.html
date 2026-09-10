@@ -3,434 +3,325 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-
 <title>일본어 그룹 학습기</title>
-
 <style>
-body{
-font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
-text-align:center;
-margin-top:30px;
-font-size:22px;
-}
-
-button{
-margin:5px;
-padding:12px;
-font-size:18px;
-}
-
-.box{
-border:1px solid #ddd;
-margin:10px;
-padding:15px;
-}
-
-.small{
-font-size:18px;
-color:#666;
-}
-
-textarea{
-width:80%;
-height:120px;
-font-size:18px;
-}
+body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; text-align: center; margin: 30px auto; padding: 0 12px; max-width: 960px; font-size: 22px; }
+button { margin: 5px; padding: 12px; font-size: 18px; cursor: pointer; }
+button:disabled { cursor: default; opacity: .55; }
+button[aria-pressed="true"] { outline: 3px solid #3264a6; }
+.box { border: 1px solid #ddd; margin: 10px; padding: 15px; overflow-wrap: anywhere; }
+.small { font-size: 18px; color: #555; }
+.wrong { margin-top: 10px; font-size: 18px; color: #9b2929; }
+#message { min-height: 1.5em; margin: 12px 0; font-size: 18px; }
+#message.error { color: #a32020; }
+textarea { box-sizing: border-box; width: 90%; height: 120px; font-size: 18px; }
+.sentence { white-space: pre-wrap; }
 </style>
-
 </head>
-
-
 <body>
-
 <h2>그룹 학습</h2>
-
-<div id="stats" class="small">
-로딩중...
-</div>
-
-<div id="app">
-로딩중...
-</div>
-
+<div id="stats" class="small">로딩 중...</div>
+<div id="message" role="status" aria-live="polite"></div>
+<div id="app">로딩 중...</div>
 
 <h3>그룹 선택</h3>
-
-<button onclick="setGroup(1)">1그룹</button>
-<button onclick="setGroup(2)">2그룹</button>
-<button onclick="setGroup(3)">3그룹</button>
-<button onclick="setGroup(4)">4그룹</button>
-<button onclick="setGroup(5)">5그룹</button>
-<button onclick="setGroup(6)">6그룹</button>
-
-
-<br><br>
-
-<button onclick="setBatch(1)">1문장</button>
-<button onclick="setBatch(5)">5문제</button>
-<button onclick="setBatch(10)">10문제</button>
-
+<div id="groups">
+<button onclick="setGroup(1)" data-group="1">1그룹</button>
+<button onclick="setGroup(2)" data-group="2">2그룹</button>
+<button onclick="setGroup(3)" data-group="3">3그룹</button>
+<button onclick="setGroup(4)" data-group="4">4그룹</button>
+<button onclick="setGroup(5)" data-group="5">5그룹</button>
+<button onclick="setGroup(6)" data-group="6">6그룹</button>
+</div>
+<br>
+<div id="sizes">
+<button onclick="setBatch(1)" data-size="1">1문장</button>
+<button onclick="setBatch(5)" data-size="5">5문제</button>
+<button onclick="setBatch(10)" data-size="10">10문제</button>
+</div>
 
 <h3>문장 추가</h3>
-
-<textarea id="inputBox"
-placeholder="한국어 TAB 일본어"></textarea>
-
+<p class="small" id="inputHelp">한국어와 일본어 두 칸을 시트에서 복사해서 붙여넣어 주세요.<br>여러 문장은 한 줄에 한 문장씩 넣어 주세요.</p>
+<textarea id="inputBox" aria-label="추가할 한국어와 일본어 문장" aria-describedby="inputHelp" placeholder="한국어 TAB 일본어"></textarea>
 <br>
-
-<button onclick="addSentences()">
-저장
-</button>
-
-
+<button id="addButton" onclick="addSentences()">저장</button>
 
 <script>
-
-
-// =====================
-// GAS 주소
-// =====================
-
 const API_URL = "https://script.google.com/macros/s/AKfycbzm_q3UdNvB-sz3GBso2cVb3EQ4gfyozEpCumWyQR87nQ6mluBYE5uv1ozZ5m3UpS-5Aw/exec";
 
-// =====================
-// 상태
-// =====================
+let sentences = [];
+let batch = [];
+let results = [];
+let batchSize = 5;
+let selectedGroup = 1;
+let busy = false;
+let pendingReviews = null;
+let pendingAdds = null;
 
-let sentences=[];
+function escapeHtml(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[ch]);
+}
 
-let batch=[];
+function newId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+  return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) + "-" + Math.random().toString(36).slice(2);
+}
 
-let results=[];
+function message(text, error = false) {
+  const element = document.getElementById("message");
+  element.textContent = text;
+  element.className = error ? "error" : "";
+}
 
-let batchSize=5;
+function refreshControls() {
+  document.querySelectorAll("button, textarea").forEach(element => {
+    let disabled = busy;
+    if (pendingReviews && element.id !== "finishButton" && element.id !== "reloadButton") disabled = true;
+    if (pendingAdds && element.id !== "addButton") disabled = true;
+    element.disabled = disabled;
+  });
+  document.querySelectorAll("[data-group]").forEach(button => button.setAttribute("aria-pressed", String(Number(button.dataset.group) === selectedGroup)));
+  document.querySelectorAll("[data-size]").forEach(button => button.setAttribute("aria-pressed", String(Number(button.dataset.size) === batchSize)));
+}
 
-let selectedGroup=1;
+async function request(data) {
+  const response = data
+    ? await fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(data) })
+    : await fetch(API_URL + "?action=load&t=" + Date.now(), { cache: "no-store" });
+  if (!response.ok) throw new Error("구글시트 연결에 실패했어요. 잠시 후 다시 시도해 주세요.");
+  let result;
+  try { result = await response.json(); }
+  catch (_) { throw new Error("저장 결과를 확인하지 못했어요. 구글시트 코드가 새 버전으로 배포되었는지 확인해 주세요."); }
+  if (result && result.status === "error") throw new Error(result.message || "저장하지 못했어요.");
+  return result;
+}
 
-
-
-// =====================
-// 데이터 로드
-// =====================
-
-async function loadData(){
-
-  const res = await fetch(API_URL + "?action=load");
-
-  const data = await res.json();
-
-  console.log("받은 데이터:", data);
-
-  sentences = data;
-
-  console.log("문장 수:", sentences.length);
-
+async function readSentences() {
+  const data = await request();
+  if (!Array.isArray(data)) throw new Error("문장 목록을 불러오지 못했어요.");
+  if (data.some(item => !Object.prototype.hasOwnProperty.call(item, "wrongCount") || typeof item.lastResultId !== "string")) {
+    throw new Error("구글시트의 새 코드를 저장한 뒤, 배포 관리에서 새 버전을 적용해 주세요.");
+  }
+  sentences = data.map(item => ({ ...item, group: Number(item.group), wrongCount: Number(item.wrongCount) }));
   updateStats();
+}
 
+async function loadData() {
+  if (busy) return;
+  busy = true;
+  refreshControls();
+  message("문장을 불러오는 중...");
+  try {
+    await readSentences();
+    pendingReviews = null;
+    startBatch();
+    message("");
+  } catch (error) {
+    message(error.message, true);
+    document.getElementById("app").innerHTML = '<button id="reloadButton" onclick="loadData()">다시 불러오기</button>';
+  } finally {
+    busy = false;
+    refreshControls();
+  }
+}
+
+function updateStats() {
+  const parts = ["전체: " + sentences.length + "개"];
+  for (let i = 1; i <= 6; i++) parts.push(i + "그룹: " + sentences.filter(item => item.group === i).length);
+  document.getElementById("stats").textContent = parts.join(" | ");
+}
+
+function setGroup(group) {
+  if (busy || pendingReviews || pendingAdds) return;
+  selectedGroup = group;
+  message("");
   startBatch();
 }
 
-
-
-
-// =====================
-// 통계
-// =====================
-
-function updateStats(){
-
-let html=
-`
-전체:${sentences.length}개 |
-
-`;
-
-for(let i=1;i<=6;i++){
-
-html+=
-`${i}그룹:${sentences.filter(x=>Number(x.group)===i).length} | `;
-
+function setBatch(size) {
+  if (busy || pendingReviews || pendingAdds) return;
+  batchSize = size;
+  message("");
+  startBatch();
 }
 
-document.getElementById("stats").innerHTML=html;
-
+function startBatch() {
+  batch = shuffle(sentences.filter(item => item.group === selectedGroup)).slice(0, batchSize);
+  results = new Array(batch.length).fill(null);
+  renderQuestions();
+  refreshControls();
 }
 
-
-
-
-// =====================
-// 그룹
-// =====================
-
-function setGroup(g){
-
-selectedGroup=g;
-
-startBatch();
-
+function renderQuestions() {
+  let html = `<h2>${selectedGroup}그룹 문제</h2>`;
+  if (batch.length === 0) {
+    html += '<p class="small">이 그룹에는 문장이 없어요. 다른 그룹을 고르거나 문장을 추가해 주세요.</p>';
+  } else {
+    batch.forEach((item, i) => {
+      html += `<div class="box"><div class="sentence">Q${i + 1}. ${escapeHtml(item.korean)}</div></div>`;
+    });
+    html += '<button onclick="renderAnswers()">답 보기</button>';
+  }
+  document.getElementById("app").innerHTML = html;
 }
 
-
-
-
-// =====================
-// 문제 생성
-// =====================
-
-function startBatch(){
-
-let pool=
-sentences.filter(
-x=>Number(x.group)===selectedGroup
-);
-
-
-batch=
-shuffle(pool).slice(0,batchSize);
-
-
-results=
-new Array(batch.length).fill(null);
-
-
-renderQuestions();
-
+function renderAnswers() {
+  if (busy || pendingReviews || !batch.length) return;
+  let html = '<h2>답</h2><p class="small">각 문장을 채점한 뒤 세트를 종료해 주세요.</p>';
+  batch.forEach((item, i) => {
+    html += `<div class="box">
+      <div class="sentence">${escapeHtml(item.korean)}</div>
+      <div class="sentence" lang="ja">정답: ${escapeHtml(item.japanese)}</div>
+      <div class="wrong">누적 오답: ${item.wrongCount}회</div>
+      <button id="correct${i}" onclick="mark(${i},true)" aria-label="${i + 1}번 정답" aria-pressed="${results[i] === true}">⭕</button>
+      <button id="wrong${i}" onclick="mark(${i},false)" aria-label="${i + 1}번 오답" aria-pressed="${results[i] === false}">❌</button>
+      <span id="m${i}">${results[i] === null ? "미채점" : results[i] ? "⭕" : "❌"}</span>
+    </div>`;
+  });
+  html += '<button id="finishButton" onclick="finishBatch()">세트 종료</button>';
+  document.getElementById("app").innerHTML = html;
+  refreshControls();
 }
 
-
-
-
-
-function renderQuestions(){
-
-let html=
-`<h2>${selectedGroup}그룹 문제</h2>`;
-
-
-batch.forEach((x,i)=>{
-
-html+=
-`
-<div class="box">
-Q${i+1}. ${x.korean}
-</div>
-`;
-
-});
-
-
-html+=
-`
-<button onclick="renderAnswers()">
-답 보기
-</button>
-`;
-
-
-document.getElementById("app").innerHTML=html;
-
+function mark(index, value) {
+  if (busy || pendingReviews || pendingAdds) return;
+  results[index] = value;
+  document.getElementById("m" + index).textContent = value ? "⭕" : "❌";
+  document.getElementById("correct" + index).setAttribute("aria-pressed", String(value));
+  document.getElementById("wrong" + index).setAttribute("aria-pressed", String(!value));
 }
 
-
-
-
-
-// =====================
-// 답
-// =====================
-
-function renderAnswers(){
-
-let html="<h2>답</h2>";
-
-
-batch.forEach((x,i)=>{
-
-
-html+=
-`
-<div class="box">
-
-${x.korean}<br>
-
-정답 :
-${x.japanese}
-
-<br><br>
-
-<button onclick="mark(${i},true)">
-⭕
-</button>
-
-
-<button onclick="mark(${i},false)">
-❌
-</button>
-
-
-<span id="m${i}"></span>
-
-</div>
-`;
-
-});
-
-
-html+=
-`
-<button onclick="finishBatch()">
-세트 종료
-</button>
-`;
-
-
-
-document.getElementById("app").innerHTML=html;
-
-
-}
-
-
-
-
-function mark(i,v){
-
-results[i]=v;
-
-document.getElementById("m"+i).innerHTML=
-v?"⭕":"❌";
-
-}
-
-
-
-
-// =====================
-// 결과 저장
-// =====================
-
-async function finishBatch(){
-
-  console.log("finish 시작");
-  console.log("batch", batch);
-  console.log("results", results);
-
-  for(let i=0;i<batch.length;i++){
-
-    let item=batch[i];
-
-    let newGroup = item.group;
-
-    if(results[i]){
-      newGroup = Math.min(item.group + 1, 6);
-    } else {
-      newGroup = 1;
+async function finishBatch() {
+  if (busy || pendingAdds || !batch.length) return;
+  if (!pendingReviews) {
+    if (results.some(value => value === null)) {
+      message("아직 채점하지 않은 문장이 있어요. 모든 문장에 ⭕ 또는 ❌를 눌러 주세요.", true);
+      return;
     }
-
-
-
-
-
- let res = await fetch(API_URL,{
-
-  method:"POST",
-
-  body:JSON.stringify({
-
-    action:"update",
-
-    id:item.id,
-
-    group:newGroup
-
-  })
-
-});
-    console.log("응답 원문:", await res.text());
-
+    pendingReviews = batch.map((item, i) => ({
+      saved: false,
+      data: {
+        action: "update", id: item.id,
+        group: results[i] === true ? Math.min(Number(item.group) + 1, 6) : 1,
+        wrongIncrement: results[i] === false ? 1 : 0,
+        resultId: newId(), expectedLastResultId: item.lastResultId
+      }
+    }));
+  }
+  busy = true;
+  refreshControls();
+  try {
+    for (let i = 0; i < pendingReviews.length; i++) {
+      const review = pendingReviews[i];
+      if (review.saved) continue;
+      message(`학습 결과 저장 중... ${i + 1}/${pendingReviews.length}`);
+      const saved = await request(review.data);
+      if (!saved || saved.status !== "updated" || String(saved.id) !== String(review.data.id) || !Number.isSafeInteger(saved.wrongCount)) {
+        throw new Error("오답 횟수 저장을 확인하지 못했어요. 구글시트의 새 코드가 배포되었는지 확인해 주세요.");
+      }
+      review.saved = true;
+    }
+  } catch (error) {
+    message(error.message + " 저장 다시 시도를 누르면 같은 결과를 이어서 저장해요.", true);
+    document.getElementById("finishButton").textContent = "저장 다시 시도";
+    if (!document.getElementById("reloadButton")) {
+      document.getElementById("app").insertAdjacentHTML("beforeend", '<button id="reloadButton" onclick="discardAndReload()">시트에서 다시 불러오기</button>');
+    }
+    busy = false;
+    refreshControls();
+    return;
   }
 
-  await loadData();
-
+  pendingReviews = null;
+  // 저장 후 목록 갱신에 실패해도 이미 저장한 결과를 다시 보내지 않습니다.
+  document.getElementById("app").textContent = "결과를 저장했어요. 다음 문장을 불러오는 중...";
+  try {
+    await readSentences();
+    startBatch();
+    message("학습 결과와 오답 횟수를 저장했어요.");
+  } catch (error) {
+    message("결과는 저장했어요. " + error.message, true);
+    document.getElementById("app").innerHTML = '<button id="reloadButton" onclick="loadData()">다음 문장 불러오기</button>';
+  } finally {
+    busy = false;
+    refreshControls();
+  }
 }
 
-// =====================
-// 추가
-// =====================
-
-async function addSentences(){
-
-let text =
-document.getElementById("inputBox").value;
-
-let lines = text.split("\n");
-
-for(let line of lines){
-
-  let p=line.split("\t");
-
-  if(p.length<2) continue;
-
-  await fetch(API_URL + "?action=load",{
-
-    method:"POST",
-
-    body:JSON.stringify({
-
-      action:"add",
-
-      korean:p[0],
-
-      japanese:p[1]
-
-    })
-
-  });
-
+function discardAndReload() {
+  if (busy) return;
+  if (!window.confirm("저장하지 못한 채점은 닫고, 시트에 저장된 내용을 다시 불러올까요?")) return;
+  pendingReviews = null;
+  loadData();
 }
 
-document.getElementById("inputBox").value="";
+async function addSentences() {
+  if (busy || pendingReviews) return;
+  const input = document.getElementById("inputBox");
+  if (!pendingAdds) {
+    const lines = input.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (!lines.length) { message("추가할 문장을 입력해 주세요.", true); return; }
+    const additions = [];
+    for (let i = 0; i < lines.length; i++) {
+      const parts = lines[i].split("\t");
+      if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+        message((i + 1) + "번째 줄을 확인해 주세요. 한국어와 일본어 두 칸을 시트에서 복사해 붙여넣으면 돼요.", true);
+        return;
+      }
+      additions.push({ saved: false, data: { action: "add", id: newId(), korean: parts[0].trim(), japanese: parts[1].trim() } });
+    }
+    pendingAdds = additions;
+  }
+
+  busy = true;
+  refreshControls();
+  try {
+    for (let i = 0; i < pendingAdds.length; i++) {
+      const addition = pendingAdds[i];
+      if (addition.saved) continue;
+      message(`문장 저장 중... ${i + 1}/${pendingAdds.length}`);
+      const saved = await request(addition.data);
+      if (!saved || saved.status !== "added" || String(saved.id) !== addition.data.id) throw new Error("문장 저장을 확인하지 못했어요.");
+      addition.saved = true;
+    }
+  } catch (error) {
+    message(error.message + " 저장 다시 시도를 눌러 주세요.", true);
+    document.getElementById("addButton").textContent = "저장 다시 시도";
+    busy = false;
+    refreshControls();
+    return;
+  }
+
+  const count = pendingAdds.length;
+  pendingAdds = null;
+  input.value = "";
+  document.getElementById("addButton").textContent = "저장";
+  document.getElementById("app").textContent = "문장을 저장했어요. 목록을 불러오는 중...";
+  try {
+    await readSentences();
+    startBatch();
+    message(count + "개 문장을 1그룹에 저장했어요. 새 문장의 오답 횟수는 0회예요.");
+  } catch (error) {
+    message("문장은 저장했어요. " + error.message, true);
+    document.getElementById("app").innerHTML = '<button id="reloadButton" onclick="loadData()">문장 다시 불러오기</button>';
+  } finally {
+    busy = false;
+    refreshControls();
+  }
+}
+
+function shuffle(array) {
+  const copy = [...array];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
 
 loadData();
-
-}
-
-
-
-
-
-// =====================
-// 설정
-// =====================
-
-function setBatch(n){
-
-batchSize=n;
-
-startBatch();
-
-}
-
-
-
-
-function shuffle(arr){
-
-return [...arr]
-.sort(()=>Math.random()-0.5);
-
-}
-
-
-
-// 시작
-
-loadData();
-
-
 </script>
-
-
 </body>
 </html>
