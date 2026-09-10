@@ -16,12 +16,27 @@ button[aria-pressed="true"] { outline: 3px solid #3264a6; }
 #message.error { color: #a32020; }
 textarea { box-sizing: border-box; width: 90%; height: 120px; font-size: 18px; }
 .sentence { white-space: pre-wrap; }
+.filter-box { border: 1px solid #ddd; margin: 16px 10px; padding: 12px; }
+.filter-box h3 { margin: 0 0 10px; font-size: 20px; }
+.filter-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.filter-controls label { font-size: 18px; }
+.filter-controls input { box-sizing: border-box; width: 80px; margin: 0 4px; padding: 10px; font-size: 18px; }
+.filter-box .small { margin: 8px 0 0; }
 </style>
 </head>
 <body>
 <h2>그룹 학습</h2>
 <div id="stats" class="small">로딩 중...</div>
 <div id="message" role="status" aria-live="polite"></div>
+<section class="filter-box" aria-labelledby="wrongFilterTitle">
+  <h3 id="wrongFilterTitle">오답 모아보기</h3>
+  <div class="filter-controls">
+    <label for="wrongThreshold">누적 오답 <input id="wrongThreshold" type="number" min="1" step="1" inputmode="numeric" value="3" onkeydown="if(event.key==='Enter'){event.preventDefault();showWrongList();}">회 이상</label>
+    <button id="wrongListButton" onclick="showWrongList()">모아보기</button>
+    <button id="groupModeButton" onclick="setGroup(selectedGroup)" hidden>그룹 학습으로</button>
+  </div>
+  <p class="small">모든 그룹에서 기준에 맞는 문장을 찾아요.</p>
+</section>
 <div id="app">로딩 중...</div>
 
 <h3>그룹 선택</h3>
@@ -54,6 +69,9 @@ let batch = [];
 let results = [];
 let batchSize = 5;
 let selectedGroup = 1;
+let studyMode = "group";
+let currentView = "questions";
+let minWrongCount = 3;
 let busy = false;
 let pendingReviews = null;
 let pendingAdds = null;
@@ -76,14 +94,15 @@ function message(text, error = false) {
 }
 
 function refreshControls() {
-  document.querySelectorAll("button, textarea").forEach(element => {
+  document.querySelectorAll("button, textarea, input").forEach(element => {
     let disabled = busy;
     if (pendingReviews && element.id !== "finishButton" && element.id !== "reloadButton") disabled = true;
     if (pendingAdds && element.id !== "addButton") disabled = true;
     element.disabled = disabled;
   });
-  document.querySelectorAll("[data-group]").forEach(button => button.setAttribute("aria-pressed", String(Number(button.dataset.group) === selectedGroup)));
+  document.querySelectorAll("[data-group]").forEach(button => button.setAttribute("aria-pressed", String(studyMode === "group" && Number(button.dataset.group) === selectedGroup)));
   document.querySelectorAll("[data-size]").forEach(button => button.setAttribute("aria-pressed", String(Number(button.dataset.size) === batchSize)));
+  document.getElementById("groupModeButton").hidden = studyMode === "group";
 }
 
 async function request(data) {
@@ -136,6 +155,7 @@ function updateStats() {
 function setGroup(group) {
   if (busy || pendingReviews || pendingAdds) return;
   selectedGroup = group;
+  studyMode = "group";
   message("");
   startBatch();
 }
@@ -144,20 +164,78 @@ function setBatch(size) {
   if (busy || pendingReviews || pendingAdds) return;
   batchSize = size;
   message("");
+  if (currentView === "wrongList") {
+    renderWrongList();
+    return;
+  }
+  startBatch();
+}
+
+function getWrongSentences() {
+  return sentences.filter(item => item.wrongCount >= minWrongCount)
+    .sort((a, b) => b.wrongCount - a.wrongCount);
+}
+
+function showWrongList() {
+  if (busy || pendingReviews || pendingAdds) return;
+  const value = Number(document.getElementById("wrongThreshold").value);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    message("오답 기준은 1 이상의 정수로 입력해 주세요. 예: 3", true);
+    return;
+  }
+  minWrongCount = value;
+  studyMode = "wrong";
+  batch = [];
+  results = [];
+  message("");
+  renderWrongList();
+}
+
+function renderWrongList() {
+  currentView = "wrongList";
+  const items = getWrongSentences();
+  let html = `<h2>누적 오답 ${minWrongCount}회 이상</h2>`;
+  html += `<p class="small">모든 그룹 · ${items.length}문장 · 오답이 많은 순서</p>`;
+  if (items.length === 0) {
+    html += '<p class="small">조건에 맞는 문장이 없어요. 위에서 기준 횟수를 낮춰 다시 모아보세요.</p>';
+  } else {
+    html += '<button id="wrongStudyButton" onclick="startWrongStudy()">이 문장들 학습하기</button>';
+    items.forEach((item, i) => {
+      html += `<div class="box">
+        <div class="sentence">${i + 1}. ${escapeHtml(item.korean)}</div>
+        <div class="sentence" lang="ja">${escapeHtml(item.japanese)}</div>
+        <div class="wrong">누적 오답: ${item.wrongCount}회 · ${item.group}그룹</div>
+      </div>`;
+    });
+  }
+  document.getElementById("app").innerHTML = html;
+  refreshControls();
+}
+
+function startWrongStudy() {
+  if (busy || pendingReviews || pendingAdds || !getWrongSentences().length) return;
+  studyMode = "wrong";
+  message("");
   startBatch();
 }
 
 function startBatch() {
-  batch = shuffle(sentences.filter(item => item.group === selectedGroup)).slice(0, batchSize);
+  const pool = studyMode === "wrong" ? getWrongSentences() : sentences.filter(item => item.group === selectedGroup);
+  batch = shuffle(pool).slice(0, batchSize);
   results = new Array(batch.length).fill(null);
   renderQuestions();
   refreshControls();
 }
 
 function renderQuestions() {
-  let html = `<h2>${selectedGroup}그룹 문제</h2>`;
+  currentView = "questions";
+  let html = studyMode === "wrong"
+    ? `<h2>누적 오답 ${minWrongCount}회 이상 학습</h2><p class="small">모든 그룹 · 해당 문장 ${getWrongSentences().length}개 중 ${batch.length}문장</p>`
+    : `<h2>${selectedGroup}그룹 문제</h2>`;
   if (batch.length === 0) {
-    html += '<p class="small">이 그룹에는 문장이 없어요. 다른 그룹을 고르거나 문장을 추가해 주세요.</p>';
+    html += studyMode === "wrong"
+      ? '<p class="small">조건에 맞는 문장이 없어요. 위에서 기준 횟수를 낮춰 다시 모아보세요.</p>'
+      : '<p class="small">이 그룹에는 문장이 없어요. 다른 그룹을 고르거나 문장을 추가해 주세요.</p>';
   } else {
     batch.forEach((item, i) => {
       html += `<div class="box"><div class="sentence">Q${i + 1}. ${escapeHtml(item.korean)}</div></div>`;
@@ -169,7 +247,9 @@ function renderQuestions() {
 
 function renderAnswers() {
   if (busy || pendingReviews || !batch.length) return;
-  let html = '<h2>답</h2><p class="small">각 문장을 채점한 뒤 세트를 종료해 주세요.</p>';
+  currentView = "answers";
+  let html = studyMode === "wrong" ? `<h2>답 · 누적 오답 ${minWrongCount}회 이상</h2>` : '<h2>답</h2>';
+  html += '<p class="small">각 문장을 채점한 뒤 세트를 종료해 주세요.</p>';
   batch.forEach((item, i) => {
     html += `<div class="box">
       <div class="sentence">${escapeHtml(item.korean)}</div>
@@ -301,7 +381,8 @@ async function addSentences() {
   document.getElementById("app").textContent = "문장을 저장했어요. 목록을 불러오는 중...";
   try {
     await readSentences();
-    startBatch();
+    if (currentView === "wrongList") renderWrongList();
+    else startBatch();
     message(count + "개 문장을 1그룹에 저장했어요. 새 문장의 오답 횟수는 0회예요.");
   } catch (error) {
     message("문장은 저장했어요. " + error.message, true);
